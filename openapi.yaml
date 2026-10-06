@@ -1,0 +1,1415 @@
+openapi: 3.1.0
+info:
+  title: Collab Canvas Aid API
+  version: 0.1.0
+  description: |
+    HTTP and WebSocket contract expected by the frontend in frontend/.
+
+    The checked-in frontend currently uses an in-browser MockBackend rather than
+    an HTTP client. This specification maps the Services interface and the API
+    surface described by frontend/README.md to a backend contract. Authentication
+    is delegated to an external identity provider; the API receives its resulting
+    bearer token.
+servers:
+  - url: https://api.example.com
+    description: Replace with the deployed API origin.
+tags:
+  - name: Authentication
+  - name: Sessions
+  - name: Participants
+  - name: Canvas
+  - name: Collaboration
+  - name: Guest access
+paths:
+  /v1/auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getCurrentUser
+      summary: Get the signed-in user
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/signout:
+    post:
+      tags: [Authentication]
+      operationId: signOut
+      summary: Sign out the current user
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Sign-out completed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/auth/token:
+    post:
+      tags: [Authentication]
+      operationId: issueToken
+      summary: Exchange a password for a bearer token
+      description: Development/MVP login endpoint for the in-memory backend.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      summary: List sessions visible to the signed-in user
+      description: Returns owned or invited sessions, excluding archived sessions.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Sessions ordered by most recently updated first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Sessions]
+      operationId: createSession
+      summary: Create a draft interview session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Draft session created with an empty canvas.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      summary: Read session metadata
+      description: Requires the signed-in user or a valid participant collaboration credential.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Session metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Sessions]
+      operationId: updateSession
+      summary: Update editable session settings
+      description: Only the owner or an interviewer with session-management permission may update a session.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSessionRequest'
+      responses:
+        '200':
+          description: Updated session metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/start:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Sessions]
+      operationId: startSession
+      summary: Start an interview session
+      description: Transitions the session to live and records startedAt.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Started session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/sessions/{id}/end:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Sessions]
+      operationId: endSession
+      summary: End an interview session
+      description: Transitions the session to ended, disables candidate editing, and finalizes the reviewable snapshot.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ended session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/sessions/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Sessions]
+      operationId: archiveSession
+      summary: Archive an interview session
+      description: Archived sessions are omitted from the normal session list and are not joinable.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Archived session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Sessions]
+      operationId: duplicateSession
+      summary: Duplicate a session as a new draft
+      description: Copies the session metadata and canvas into a new draft owned by the current user.
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: New draft session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/guest-links:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Guest access]
+      operationId: getGuestLink
+      summary: Get the current active guest link
+      description: Returns null when the session has no active guest link.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current active link, or null.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/GuestLink'
+                  - type: 'null'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Guest access]
+      operationId: rotateGuestLink
+      summary: Create or rotate the candidate guest link
+      description: Revokes any currently active link for the session and returns a new candidate link.
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: New active guest link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/guest-links/{linkId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - $ref: '#/components/parameters/LinkId'
+    delete:
+      tags: [Guest access]
+      operationId: revokeGuestLink
+      summary: Revoke a guest link
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Guest link revoked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/join/{token}:
+    parameters:
+      - $ref: '#/components/parameters/GuestToken'
+    get:
+      tags: [Guest access]
+      operationId: resolveGuestToken
+      summary: Validate a guest link before displaying the join form
+      description: This endpoint is public, but possession of the high-entropy token is required.
+      security: []
+      responses:
+        '200':
+          description: Joinable session and link metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedGuestLink'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: Guest link revoked, expired, archived, or otherwise no longer joinable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags: [Guest access]
+      operationId: joinWithToken
+      summary: Join a session as a guest candidate
+      description: Creates a participant and returns a short-lived collaboration credential for subsequent session access.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinSessionRequest'
+      responses:
+        '201':
+          description: Guest participant created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinSessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Session is at participant capacity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Guest link is revoked, expired, archived, or the session has ended.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/sessions/{id}/participants/owner:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Participants]
+      operationId: joinAsOwner
+      summary: Join a session as its authenticated owner
+      description: Creates or reactivates the owner's participant record. No request body is required.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Owner participant record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Participant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/participants:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Participants]
+      operationId: listParticipants
+      summary: List participants in a session
+      description: Requires session access; a participant collaboration credential is sufficient after joining.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Participant records, including inactive records with leftAt set.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Participant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/participants/{participantId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - $ref: '#/components/parameters/ParticipantId'
+    delete:
+      tags: [Participants]
+      operationId: removeParticipant
+      summary: Remove a participant from a session
+      description: Only an owner or interviewer may remove another participant.
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Participant marked as left and made inactive.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/audit:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Sessions]
+      operationId: getAuditLog
+      summary: Get the session audit log
+      description: Returns audit events newest first. Access is limited to the owner and authorized interviewers.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Audit events.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEvent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/canvas:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Canvas]
+      operationId: getCanvasSnapshot
+      summary: Get the authoritative canvas snapshot
+      description: Requires session access through a user token or participant collaboration credential.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current canvas document and operation cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanvasSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/canvas/operations:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Canvas]
+      operationId: submitCanvasOperations
+      summary: Submit persistent canvas operations
+      description: |
+        The server must authorize the participant for every batch. Candidate
+        edits are rejected when candidateEditingEnabled is false; observers,
+        removed participants, ended sessions, and archived sessions cannot edit.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitOperationsRequest'
+      responses:
+        '200':
+          description: Number of accepted envelopes and the new document cursor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitOperationsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Operation rejected because the session state or cursor is no longer compatible.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /v1/sessions/{id}/canvas/export:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Canvas]
+      operationId: exportCanvasJson
+      summary: Export a session and its canvas as JSON
+      description: The frontend downloads this response as a JSON file.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: JSON export containing session metadata and canvas data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanvasExport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/sessions/{id}/realtime:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Collaboration]
+      operationId: connectRealtime
+      summary: Upgrade to the session collaboration WebSocket
+      description: |
+        This GET is an HTTP Upgrade request to WebSocket. The bearer token may
+        be the signed-in user's token or the short-lived collaboration token
+        returned by the guest join flow. The message contract is described by
+        x-websocket below because OpenAPI does not standardize WebSocket frames.
+      security:
+        - bearerAuth: []
+      responses:
+        '101':
+          description: Switching Protocols; WebSocket connection established.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      x-websocket:
+        protocolVersion: 1
+        clientToServer:
+          - $ref: '#/components/schemas/JoinRoomMessage'
+          - $ref: '#/components/schemas/DocumentUpdateMessage'
+          - $ref: '#/components/schemas/PresenceUpdateMessage'
+          - $ref: '#/components/schemas/PingMessage'
+        serverToClient:
+          - $ref: '#/components/schemas/RoomJoinedMessage'
+          - $ref: '#/components/schemas/DocumentUpdateMessage'
+          - $ref: '#/components/schemas/PresenceSnapshotMessage'
+          - $ref: '#/components/schemas/PresenceUpdateMessage'
+          - $ref: '#/components/schemas/PermissionChangedMessage'
+          - $ref: '#/components/schemas/SessionEndedMessage'
+          - $ref: '#/components/schemas/RealtimeErrorMessage'
+          - $ref: '#/components/schemas/PongMessage'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Signed-in user access token, or a short-lived participant collaboration
+        credential returned after a guest joins. Guest-link URLs are only used
+        for the initial public resolve/join exchange.
+
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: Interview session identifier.
+      schema:
+        type: string
+    LinkId:
+      name: linkId
+      in: path
+      required: true
+      description: Guest link identifier.
+      schema:
+        type: string
+    ParticipantId:
+      name: participantId
+      in: path
+      required: true
+      description: Session participant identifier.
+      schema:
+        type: string
+    GuestToken:
+      name: token
+      in: path
+      required: true
+      description: Opaque guest-link token; at least 128 bits of cryptographic entropy.
+      schema:
+        type: string
+        minLength: 32
+
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated principal lacks permission for this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource does not exist or is not visible to the caller.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource state does not permit this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    TokenRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [bearer]
+        expires_in:
+          type: integer
+          minimum: 1
+
+    User:
+      type: object
+      required: [id, email, displayName, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/EpochMillis'
+
+    SessionState:
+      type: string
+      enum: [draft, live, ended, archived]
+
+    Role:
+      type: string
+      enum: [owner, interviewer, candidate, observer]
+
+    InterviewSession:
+      type: object
+      required:
+        - id
+        - ownerUserId
+        - title
+        - prompt
+        - state
+        - candidateEditingEnabled
+        - durationMinutes
+        - scheduledAt
+        - startedAt
+        - endedAt
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        ownerUserId:
+          type: string
+        title:
+          type: string
+        prompt:
+          type: string
+        state:
+          $ref: '#/components/schemas/SessionState'
+        candidateEditingEnabled:
+          type: boolean
+        durationMinutes:
+          type: integer
+          minimum: 1
+        scheduledAt:
+          oneOf:
+            - $ref: '#/components/schemas/EpochMillis'
+            - type: 'null'
+        startedAt:
+          oneOf:
+            - $ref: '#/components/schemas/EpochMillis'
+            - type: 'null'
+        endedAt:
+          oneOf:
+            - $ref: '#/components/schemas/EpochMillis'
+            - type: 'null'
+        createdAt:
+          $ref: '#/components/schemas/EpochMillis'
+        updatedAt:
+          $ref: '#/components/schemas/EpochMillis'
+
+    GuestLink:
+      type: object
+      required: [id, sessionId, token, roleGranted, expiresAt, maxUses, revokedAt, createdAt]
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        token:
+          type: string
+          minLength: 32
+          description: Opaque secret. Do not log or expose it to analytics.
+        roleGranted:
+          type: string
+          enum: [interviewer, candidate, observer]
+        expiresAt:
+          oneOf:
+            - $ref: '#/components/schemas/EpochMillis'
+            - type: 'null'
+        maxUses:
+          oneOf:
+            - type: integer
+              minimum: 1
+            - type: 'null'
+        revokedAt:
+          oneOf:
+            - $ref: '#/components/schemas/EpochMillis'
+            - type: 'null'
+        createdAt:
+          $ref: '#/components/schemas/EpochMillis'
+
+    Participant:
+      type: object
+      required: [id, sessionId, userId, displayName, role, color, joinedAt, leftAt, online]
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        userId:
+          oneOf:
+            - type: string
+            - type: 'null'
+        displayName:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        color:
+          type: string
+        joinedAt:
+          $ref: '#/components/schemas/EpochMillis'
+        leftAt:
+          oneOf:
+            - $ref: '#/components/schemas/EpochMillis'
+            - type: 'null'
+        online:
+          type: boolean
+
+    Presence:
+      type: object
+      required: [participantId, displayName, color, cursor, selection]
+      properties:
+        participantId:
+          type: string
+        displayName:
+          type: string
+        color:
+          type: string
+        cursor:
+          oneOf:
+            - $ref: '#/components/schemas/Point'
+            - type: 'null'
+        selection:
+          type: array
+          items:
+            type: string
+
+    AuditEvent:
+      type: object
+      required: [id, sessionId, type, actor, at]
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        type:
+          type: string
+          description: Stable event name such as session.created or participant.joined.
+        actor:
+          type: string
+        at:
+          $ref: '#/components/schemas/EpochMillis'
+
+    CanvasSnapshot:
+      type: object
+      required: [sessionId, doc, operationCursor, updatedAt]
+      properties:
+        sessionId:
+          type: string
+        doc:
+          $ref: '#/components/schemas/CanvasDoc'
+        operationCursor:
+          type: integer
+          minimum: 0
+        updatedAt:
+          $ref: '#/components/schemas/EpochMillis'
+
+    CanvasDoc:
+      type: object
+      required: [schemaVersion, elements, order]
+      properties:
+        schemaVersion:
+          type: integer
+          minimum: 1
+        elements:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CanvasElement'
+        order:
+          type: array
+          description: Element IDs in draw order, from bottom to top.
+          items:
+            type: string
+
+    CanvasElement:
+      oneOf:
+        - $ref: '#/components/schemas/NodeElement'
+        - $ref: '#/components/schemas/StickyElement'
+        - $ref: '#/components/schemas/TextElement'
+        - $ref: '#/components/schemas/ConnectorElement'
+        - $ref: '#/components/schemas/StrokeElement'
+      discriminator:
+        propertyName: kind
+        mapping:
+          node: '#/components/schemas/NodeElement'
+          sticky: '#/components/schemas/StickyElement'
+          text: '#/components/schemas/TextElement'
+          connector: '#/components/schemas/ConnectorElement'
+          stroke: '#/components/schemas/StrokeElement'
+
+    ElementBase:
+      type: object
+      required: [id, createdBy, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        createdBy:
+          type: string
+        createdAt:
+          $ref: '#/components/schemas/EpochMillis'
+        updatedAt:
+          $ref: '#/components/schemas/EpochMillis'
+
+    ElementColor:
+      type: string
+      enum: [neutral, accent, amber, rose]
+
+    NodeElement:
+      allOf:
+        - $ref: '#/components/schemas/ElementBase'
+        - type: object
+          required: [kind, componentType, x, y, width, height, label, color]
+          properties:
+            kind:
+              const: node
+            componentType:
+              type: string
+            x:
+              type: number
+            y:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+            label:
+              type: string
+            description:
+              type: string
+            color:
+              $ref: '#/components/schemas/ElementColor'
+
+    StickyElement:
+      allOf:
+        - $ref: '#/components/schemas/ElementBase'
+        - type: object
+          required: [kind, x, y, width, height, text, color]
+          properties:
+            kind:
+              const: sticky
+            x:
+              type: number
+            y:
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+            text:
+              type: string
+            color:
+              $ref: '#/components/schemas/ElementColor'
+
+    TextElement:
+      allOf:
+        - $ref: '#/components/schemas/ElementBase'
+        - type: object
+          required: [kind, x, y, text, size, color]
+          properties:
+            kind:
+              const: text
+            x:
+              type: number
+            y:
+              type: number
+            text:
+              type: string
+            size:
+              type: number
+            color:
+              $ref: '#/components/schemas/ElementColor'
+
+    ConnectorEndpoint:
+      oneOf:
+        - type: object
+          required: [elementId]
+          properties:
+            elementId:
+              type: string
+        - $ref: '#/components/schemas/Point'
+
+    ConnectorElement:
+      allOf:
+        - $ref: '#/components/schemas/ElementBase'
+        - type: object
+          required: [kind, from, to, style, arrowStart, arrowEnd, dashed, width, color]
+          properties:
+            kind:
+              const: connector
+            from:
+              $ref: '#/components/schemas/ConnectorEndpoint'
+            to:
+              $ref: '#/components/schemas/ConnectorEndpoint'
+            style:
+              type: string
+              enum: [straight, elbow, curved]
+            arrowStart:
+              type: boolean
+            arrowEnd:
+              type: boolean
+            dashed:
+              type: boolean
+            width:
+              type: number
+            label:
+              type: string
+            color:
+              $ref: '#/components/schemas/ElementColor'
+
+    StrokeElement:
+      allOf:
+        - $ref: '#/components/schemas/ElementBase'
+        - type: object
+          required: [kind, points, color, width, tool]
+          properties:
+            kind:
+              const: stroke
+            points:
+              type: array
+              items:
+                type: array
+                prefixItems:
+                  - type: number
+                  - type: number
+                minItems: 2
+                maxItems: 2
+            color:
+              $ref: '#/components/schemas/ElementColor'
+            width:
+              type: number
+            tool:
+              type: string
+              enum: [pen, highlighter]
+
+    CanvasElementPatch:
+      type: object
+      description: Partial element object applied by an update operation.
+      additionalProperties: true
+
+    CanvasOperation:
+      oneOf:
+        - $ref: '#/components/schemas/AddOperation'
+        - $ref: '#/components/schemas/UpdateOperation'
+        - $ref: '#/components/schemas/DeleteOperation'
+        - $ref: '#/components/schemas/ReorderOperation'
+        - $ref: '#/components/schemas/ClearOperation'
+
+    AddOperation:
+      type: object
+      required: [type, element]
+      properties:
+        type:
+          const: add
+        element:
+          $ref: '#/components/schemas/CanvasElement'
+
+    UpdateOperation:
+      type: object
+      required: [type, id, patch, at]
+      properties:
+        type:
+          const: update
+        id:
+          type: string
+        patch:
+          $ref: '#/components/schemas/CanvasElementPatch'
+        at:
+          $ref: '#/components/schemas/EpochMillis'
+
+    DeleteOperation:
+      type: object
+      required: [type, ids]
+      properties:
+        type:
+          const: delete
+        ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+
+    ReorderOperation:
+      type: object
+      required: [type, id, to]
+      properties:
+        type:
+          const: reorder
+        id:
+          type: string
+        to:
+          type: string
+          enum: [front, back]
+
+    ClearOperation:
+      type: object
+      required: [type]
+      properties:
+        type:
+          const: clear
+
+    CanvasEnvelope:
+      type: object
+      required: [clientOperationId, actorId, sentAt, operation]
+      properties:
+        clientOperationId:
+          type: string
+          description: Unique per client operation; used for deduplication.
+        actorId:
+          type: string
+        sentAt:
+          $ref: '#/components/schemas/EpochMillis'
+        operation:
+          $ref: '#/components/schemas/CanvasOperation'
+
+    CreateSessionRequest:
+      type: object
+      required: [title, prompt, durationMinutes]
+      properties:
+        title:
+          type: string
+        prompt:
+          type: string
+        durationMinutes:
+          type: integer
+          minimum: 1
+
+    UpdateSessionRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+        prompt:
+          type: string
+        candidateEditingEnabled:
+          type: boolean
+        durationMinutes:
+          type: integer
+          minimum: 1
+
+    JoinSessionRequest:
+      type: object
+      required: [displayName]
+      properties:
+        displayName:
+          type: string
+          description: Guest display name; blank values default to Guest.
+
+    ResolvedGuestLink:
+      type: object
+      required: [session, link]
+      properties:
+        session:
+          $ref: '#/components/schemas/InterviewSession'
+        link:
+          $ref: '#/components/schemas/GuestLink'
+
+    JoinSessionResponse:
+      type: object
+      required: [session, participant, collaborationToken]
+      properties:
+        session:
+          $ref: '#/components/schemas/InterviewSession'
+        participant:
+          $ref: '#/components/schemas/Participant'
+        collaborationToken:
+          type: string
+          description: Short-lived bearer credential for session APIs and the realtime WebSocket.
+
+    SubmitOperationsRequest:
+      type: object
+      required: [participantId, envelopes]
+      properties:
+        participantId:
+          type: string
+        envelopes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CanvasEnvelope'
+
+    SubmitOperationsResponse:
+      type: object
+      required: [accepted, cursor]
+      properties:
+        accepted:
+          type: integer
+          minimum: 0
+        cursor:
+          type: integer
+          minimum: 0
+
+    CanvasExport:
+      type: object
+      required: [session, canvas, exportedAt]
+      properties:
+        session:
+          $ref: '#/components/schemas/InterviewSession'
+        canvas:
+          $ref: '#/components/schemas/CanvasDoc'
+        exportedAt:
+          type: string
+          format: date-time
+
+    ErrorCode:
+      type: string
+      enum: [not_found, revoked, expired, at_capacity, forbidden, ended, invalid]
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    Point:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+
+    EpochMillis:
+      type: integer
+      format: int64
+      description: Unix epoch timestamp in milliseconds.
+
+    RealtimeEnvelope:
+      type: object
+      required: [type, version, sessionId]
+      properties:
+        type:
+          type: string
+        version:
+          type: integer
+          const: 1
+        sessionId:
+          type: string
+        correlationId:
+          type: string
+
+    JoinRoomMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, participantId]
+          properties:
+            type:
+              const: join_room
+            participantId:
+              type: string
+
+    DocumentUpdateMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, envelopes]
+          properties:
+            type:
+              const: document_update
+            envelopes:
+              type: array
+              minItems: 1
+              items:
+                $ref: '#/components/schemas/CanvasEnvelope'
+
+    PresenceUpdateMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, presence]
+          properties:
+            type:
+              const: presence_update
+            presence:
+              $ref: '#/components/schemas/Presence'
+
+    PingMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type]
+          properties:
+            type:
+              const: ping
+
+    RoomJoinedMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, snapshot, participants, presences, cursor]
+          properties:
+            type:
+              const: room_joined
+            snapshot:
+              $ref: '#/components/schemas/CanvasDoc'
+            participants:
+              type: array
+              items:
+                $ref: '#/components/schemas/Participant'
+            presences:
+              type: array
+              items:
+                $ref: '#/components/schemas/Presence'
+            cursor:
+              type: integer
+              minimum: 0
+
+    PresenceSnapshotMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, presences]
+          properties:
+            type:
+              const: presence_snapshot
+            presences:
+              type: array
+              items:
+                $ref: '#/components/schemas/Presence'
+
+    PermissionChangedMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, session]
+          properties:
+            type:
+              const: permission_changed
+            session:
+              $ref: '#/components/schemas/InterviewSession'
+
+    SessionEndedMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, session]
+          properties:
+            type:
+              const: session_ended
+            session:
+              $ref: '#/components/schemas/InterviewSession'
+
+    RealtimeErrorMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type, error]
+          properties:
+            type:
+              const: error
+            error:
+              $ref: '#/components/schemas/ErrorResponse'
+
+    PongMessage:
+      allOf:
+        - $ref: '#/components/schemas/RealtimeEnvelope'
+        - type: object
+          required: [type]
+          properties:
+            type:
+              const: pong

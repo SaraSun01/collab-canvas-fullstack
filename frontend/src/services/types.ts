@@ -99,6 +99,7 @@ export class ServiceError extends Error {
       | "ended"
       | "invalid",
     message: string,
+    public status?: number,
   ) {
     super(message);
     this.name = "ServiceError";

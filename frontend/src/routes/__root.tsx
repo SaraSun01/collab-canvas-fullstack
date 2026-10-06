@@ -107,12 +107,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  // The static Docker build mounts RouterProvider inside #root. Rendering the
+  // document shell there would create an invalid nested html/body tree and
+  // leave React's event delegation attached to the wrong DOM node.
+  if (typeof document !== "undefined" && document.getElementById("root")) {
+    return <>{children}</>;
+  }
+
   return (
     <html lang="en">
       <head>
         <HeadContent />
       </head>
-      <body>
+      {/* Browser extensions such as Grammarly may add attributes before hydration. */}
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>

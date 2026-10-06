@@ -21,10 +21,15 @@ export interface MockDb {
 const STORAGE_KEY = "lattice.mock.db.v1";
 
 export function randomId(prefix = "id"): string {
-  const rnd =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID().replace(/-/g, "").slice(0, 12)
-      : Math.random().toString(36).slice(2, 14);
+  let rnd: string;
+  try {
+    rnd =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID().replace(/-/g, "").slice(0, 12)
+        : Math.random().toString(36).slice(2, 14);
+  } catch {
+    rnd = Math.random().toString(36).slice(2, 14);
+  }
   return `${prefix}_${rnd}`;
 }
 

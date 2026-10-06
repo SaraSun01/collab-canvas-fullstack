@@ -33,9 +33,16 @@ function Join() {
         // Rejoin after reload without asking again.
         const saved = sessionStorage.getItem(key(token));
         if (saved) {
-          const list = await services.sessions.participants(session.id);
-          const p = list.find((x) => x.id === saved && !x.leftAt);
-          if (p) setParticipant(p);
+          try {
+            const list = await services.sessions.participants(session.id);
+            const p = list.find((x) => x.id === saved && !x.leftAt);
+            if (p) setParticipant(p);
+            else sessionStorage.removeItem(key(token));
+          } catch {
+            // A backend restart may invalidate the saved collaboration token.
+            // Leave the guest on the join form so a fresh credential can be issued.
+            sessionStorage.removeItem(key(token));
+          }
         }
       },
       (e: Error) => setError(e.message),

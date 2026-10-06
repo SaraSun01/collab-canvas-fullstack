@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Archive, Copy, Plus, RotateCcw } from "lucide-react";
 
 import { services, type InterviewSession } from "@/services";
-import { resetDb } from "@/services/mock/store";
 import { StateChip } from "@/components/workspace/StateChip";
 
 export const Route = createFileRoute("/")({
@@ -125,13 +124,10 @@ function Dashboard() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            resetDb();
-            window.location.reload();
-          }}
+          onClick={() => void load()}
           className="mt-4 flex items-center gap-1.5 text-xs text-muted-ink hover:text-ink"
         >
-          <RotateCcw className="size-3" /> Reset demo data
+          <RotateCcw className="size-3" /> Refresh sessions
         </button>
       </main>
     </div>

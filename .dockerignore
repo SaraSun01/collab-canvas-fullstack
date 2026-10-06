@@ -1,0 +1,13 @@
+.git
+.gitignore
+.pytest_cache
+**/__pycache__
+**/*.py[cod]
+backend/.venv
+backend/*.db
+frontend/node_modules
+frontend/.output
+frontend/.tanstack
+frontend/.wrangler
+frontend/dist
+*.log

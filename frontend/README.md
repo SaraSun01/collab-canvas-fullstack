@@ -817,3 +817,11 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+The frontend uses the FastAPI client in `src/services/api.ts`. Start the backend from the repository root with:
+
+```sh
+python -m uvicorn backend.app.main:app --reload
+```
+
+Copy `.env.example` to `.env.local` only if you need to override the default local API URL or seeded development credentials.
