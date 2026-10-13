@@ -2,9 +2,9 @@
 
 Collaborative Canvas Aid is a full-stack system-design interview workspace. An interviewer creates an interview session, shares a guest link, and works with candidates on a shared architecture canvas in real time. The application stores sessions, participants, canvas documents, operations, and audit events for later review.
 
-Repository: [SaraSun01/collab-canvas-fullstack](https://github.com/SaraSun01/collab-canvas-fullstack)
+**Live Demo:** [Try the Collaborative Canvas App](https://collab-canvas-fullstack.onrender.com/)
 
-> **Render demo URL:** Not defined in the repository. Add the deployed URL here once it has been verified.
+*Hosted on Render. The free-tier instance may take a minute to wake up after inactivity.*
 
 ## Features
 
@@ -227,7 +227,7 @@ The workflow contains no AWS, OIDC, or cloud-provider deployment configuration. 
 
 ## Deployment on Render
 
-There is no `render.yaml` or verified Render service URL checked into this repository. Configure the Render service externally as a Docker Web Service using the repository root as the Docker build context and [`Dockerfile`](./Dockerfile) as the Dockerfile.
+The application is deployed as a Docker Web Service on Render and is accessible at [Live Demo](https://collab-canvas-fullstack.onrender.com/). Deployment is configured through the Render dashboard rather than a `render.yaml` file. Configure the Render service externally as a Docker Web Service using the repository root as the Docker build context and [`Dockerfile`](./Dockerfile) as the Dockerfile.
 
 For the current image, configure:
 
